@@ -388,14 +388,6 @@ export function ContentEditor({ value, onChange, config }: { value: ContentSetti
   const repliesPossible = !!config.tiktokComments && !unaudited;
   return (
     <div className="editor">
-      {unaudited && (
-        <Notice tone="warn">
-          <strong>TikTok early access.</strong> Until TikTok approves Tokpad: posts go to TikTok as <strong>private</strong>{" "}
-          (only you can see them), your TikTok account must be set to <strong>Private</strong> (TikTok → Settings and privacy →
-          Privacy → Private account), only a few accounts can post through Tokpad each day, and comment replies are off. Every
-          post still appears publicly on Tokpad.
-        </Notice>
-      )}
       <div className="format-options">
         {(Object.keys(FORMAT_LABELS) as Format[]).map((f) => (
           <label key={f} className={value.formats.includes(f) ? "option on" : "option"}>
