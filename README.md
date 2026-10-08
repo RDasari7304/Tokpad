@@ -100,32 +100,71 @@ TikTok login needs a public HTTPS redirect, so test the connect flow on your dep
 
 ## TikTok setup
 
-1. Create an app at developers.tiktok.com. Add **Login Kit** and the **Content Posting API** (turn on **Direct Post**).
-   Copy the Client key and secret into `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET`.
-2. Login Kit → Redirect URI: `https://yourdomain.com/api/tiktok/callback`.
-3. Scopes: `user.info.basic`, `user.info.profile`, `video.publish`, `video.upload`, `video.list`.
-4. **URL properties**: verify the domain or URL prefix of `S3_PUBLIC_BASE_URL`. TikTok pulls every video and photo from
-   that URL (`PULL_FROM_URL`), and refuses unverified ones.
-5. Webhooks → Callback URL: `https://yourdomain.com/api/tiktok/webhook`. When a creator removes the app in TikTok, the
-   stored tokens are dropped.
-6. Until TikTok audits the app, only sandbox **target users** can log in, and posts can only be private. Keep
-   `TIKTOK_ACCESS_MODE=testers` and the site handles this for you:
-   - The creator enters the coin's TikTok username (on the launch form or the coin page).
-   - It appears in **Admin → TikTok access**. In the developer portal, open your app's Sandbox → Target users, add the
-     account, then click **Mark added**.
-   - The creator's coin page then shows **Log in with TikTok**.
-   - Posts go out as "only me" automatically while the app is unaudited (the API refuses public posts until then).
-7. To let anyone connect and post publicly, **submit the app for review** with a screencast of the connect-and-publish
-   flow. Once approved, set `TIKTOK_ACCESS_MODE=open` and redeploy: the login button works for everyone.
-8. TikTok caps Direct Post at roughly 15 posts per creator per day, so `CONTENT_MAX_POSTS_PER_DAY` defaults to 15. Posts
-   carry TikTok's AI-generated content label (`is_aigc`). Videos post as TikToks; image posts and carousels post as
-   photo-mode posts (with auto-added music).
-9. **Comment replies (optional).** TikTok's comment API (`comment.list`, `comment.list.manage`) is only available to
-   approved apps. Once your app has those scopes, set `TIKTOK_COMMENTS=true`; creators then reconnect once to grant them.
-   Without it, everything else works and the Comments tab says replies aren't switched on.
+Creators connect TikTok **inside the launch form**: step 1 is "Log in with TikTok", which sends them to TikTok's
+login and consent screen and back to the form. The account is attached to the coin when it's created, becomes the
+token's website on pump.fun, and the influencer posts there from launch. With `TIKTOK_REQUIRED_AT_LAUNCH=true` (default)
+nobody can launch without it; set it to `false` to make TikTok optional (creators can then connect later from the
+coin page).
 
-Access tokens last 24 hours and are refreshed automatically with the refresh token (valid for a year); creators only log
-in again if they remove the app or don't post for a year.
+### 1. Create the app
+
+1. Go to [developers.tiktok.com](https://developers.tiktok.com), log in, and register as a developer (individual or
+   organization).
+2. **Manage apps → Connect an app.** Fill in: app icon (1024×1024), name ("Tokpad"), category, description, and these
+   URLs: Terms of Service `https://yourdomain.com/terms`, Privacy Policy `https://yourdomain.com/privacy`, and
+   Web/Desktop URL `https://yourdomain.com`. Platforms: **Web**.
+3. Copy the **Client key** and **Client secret** into `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET`.
+
+### 2. Add products and scopes
+
+1. **Add products → Login Kit.** Redirect URI (Web): `https://yourdomain.com/api/tiktok/callback`. It must match
+   `PUBLIC_URL` exactly, so it must be HTTPS (see "Testing locally" below).
+2. **Add products → Content Posting API.** Turn on **Direct Post**.
+3. **Scopes:** `user.info.basic`, `user.info.profile`, `video.publish`, `video.upload`, `video.list`.
+4. **URL properties → Add URL property:** verify the domain (or URL prefix) of `S3_PUBLIC_BASE_URL`, e.g.
+   `https://media.yourdomain.com/`. TikTok gives you a TXT record (domain) or a file (URL prefix) to prove ownership.
+   TikTok pulls every video and photo from that address and rejects unverified ones (`url_ownership_unverified`).
+5. **Webhooks:** callback URL `https://yourdomain.com/api/tiktok/webhook`, so Tokpad drops the tokens when a creator
+   removes the app from their TikTok.
+
+### 3. Sandbox (before TikTok approves the app)
+
+1. In the app, switch to **Sandbox** (create one if asked). Sandbox has its own client key and secret: use those in
+   `server/.env` while testing.
+2. **Sandbox → Target users → Add account:** add each TikTok account that should be able to log in (yours first). Only
+   target users can log in while the app is unaudited, and TikTok allows a limited number of them.
+3. Keep `TIKTOK_ACCESS_MODE=testers`. Unaudited apps can only post **privately** ("only me"); Tokpad does this
+   automatically, so test posts show on the account but aren't public.
+4. Admin → TikTok access lists accounts creators asked for from coin pages (when TikTok isn't required at launch).
+
+### 4. Go live (audit)
+
+1. In the app, **Submit for review**. Include a screen recording of: open the launch form → Log in with TikTok →
+   approve → finish launching → a post appearing on the TikTok account. Explain that posts are AI-generated and
+   labelled as such (`is_aigc`), and that creators choose to connect their own accounts.
+2. After approval, switch `server/.env` to the production client key/secret and set `TIKTOK_ACCESS_MODE=open`. Posts go
+   out public (`TIKTOK_PRIVACY_LEVEL`, default `PUBLIC_TO_EVERYONE`), and any TikTok account can log in.
+
+### Testing locally
+
+TikTok only redirects to HTTPS addresses you've registered, so `http://localhost` won't work for the login itself.
+Either set `TIKTOK_REQUIRED_AT_LAUNCH=false` and skip TikTok locally, or run a tunnel:
+
+```bash
+cloudflared tunnel --url http://localhost:5173      # prints https://<random>.trycloudflare.com
+```
+
+Set `PUBLIC_URL` to that address, add `<that address>/api/tiktok/callback` as a Login Kit redirect URI in the sandbox,
+restart `npm run dev`, and open the site through the tunnel address.
+
+### Limits and notes
+
+- TikTok caps Direct Post at roughly 15 posts per creator per day, so `CONTENT_MAX_POSTS_PER_DAY` defaults to 15.
+- Videos post as TikToks; image posts and carousels post as photo-mode posts with auto-added music. All carry
+  TikTok's AI-generated label.
+- Access tokens last 24 hours and refresh automatically (refresh tokens last a year).
+- **Comment replies (optional):** TikTok's comment scopes (`comment.list`, `comment.list.manage`) need separate
+  approval. Once granted, set `TIKTOK_COMMENTS=true`; creators reconnect once.
 
 ## Deploy (Render)
 

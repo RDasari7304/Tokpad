@@ -74,6 +74,7 @@ app.get("/api/config", (_req, res) => {
     treasuryDryRun: config.TREASURY_DRY_RUN,
     tiktokAccessMode: config.TIKTOK_ACCESS_MODE,
     tiktokComments: config.TIKTOK_COMMENTS,
+    tiktokRequired: config.TIKTOK_REQUIRED_AT_LAUNCH,
     limits: {
       minPostsPerDay: config.CONTENT_MIN_POSTS_PER_DAY,
       maxPostsPerDay: config.CONTENT_MAX_POSTS_PER_DAY,

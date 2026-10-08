@@ -236,6 +236,8 @@ export interface AppConfig {
   treasuryDryRun: boolean;
   tiktokAccessMode: "testers" | "open";
   tiktokComments?: boolean;
+  /** Creators must log in with TikTok in the launch form before launching. */
+  tiktokRequired?: boolean;
   limits: { minPostsPerDay: number; maxPostsPerDay: number; maxReelsPerWeek: number; nativeBuybackShare?: number; treasuryMinBuySol: number; treasuryBuyIntervalMin: number };
   reels?: { seconds: number; shots?: number; audio: boolean };
   catalog: {

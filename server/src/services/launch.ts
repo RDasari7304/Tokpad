@@ -7,6 +7,7 @@ import type { CoinDraft } from "../domain/schemas.js";
 import { logger } from "../lib/logger.js";
 import { openKeypair, sealKeypair } from "../lib/secrets.js";
 import { getCoin, type CoinRow } from "./coins.js";
+import { pendingConnection } from "./tiktokAccess.js";
 import { pinImage, pinMetadata } from "./ipfs.js";
 import { normaliseTokenImage } from "./media.js";
 import { coinWebsite } from "../domain/links.js";
@@ -29,6 +30,22 @@ export async function createDraft(wallet: string, draft: CoinDraft, image: Buffe
   // Every treasury runs the same automatic buyback-and-burn; nothing for the creator to configure.
   const ts = { mode: "buyback_burn" };
 
+  // The TikTok account the creator logged in with in the launch form. If they're redoing a launch that never
+  // went live, the account connected to that unlaunched coin carries over instead.
+  const pending = await pendingConnection(wallet);
+  const carried = pending
+    ? null
+    : await one<{ coin_id: string; username: string }>(
+        `SELECT a.coin_id, a.username FROM tiktok_accounts a JOIN coins c ON c.id = a.coin_id
+         WHERE c.creator_wallet = $1 AND c.status <> 'live' AND a.status = 'active'
+         ORDER BY c.created_at DESC LIMIT 1`,
+        [wallet],
+      );
+  const tiktokUsername = pending?.username ?? carried?.username ?? null;
+  if (!tiktokUsername && config.TIKTOK_REQUIRED_AT_LAUNCH) {
+    throw new LaunchError("Connect your TikTok account first (the TikTok step in the launch form).");
+  }
+
   // Insert first to get the coin id for the storage path.
   const row = await one<CoinRow>(
     `INSERT INTO coins(creator_wallet, name, symbol, description, website, twitter, telegram,
@@ -40,7 +57,7 @@ export async function createDraft(wallet: string, draft: CoinDraft, image: Buffe
       draft.name,
       draft.symbol,
       draft.description,
-      coinWebsite(config.PUBLIC_URL, mint.publicKey.toBase58(), draft.tiktokUsername), // the influencer's TikTok
+      coinWebsite(config.PUBLIC_URL, mint.publicKey.toBase58(), tiktokUsername), // the influencer's TikTok
       draft.twitter ?? null,
       draft.telegram ?? null,
       agent.publicKey.toBase58(),
@@ -55,13 +72,41 @@ export async function createDraft(wallet: string, draft: CoinDraft, image: Buffe
   const coin = row!;
   try {
     const [imageUrl, ipfs] = await Promise.all([putObject(mediaKey(coin.id, "png"), png, "image/png"), pinImage(png, "image/png")]);
-    if (draft.tiktokUsername) {
-      await query(`INSERT INTO tiktok_access_requests(coin_id, username) VALUES ($1, $2) ON CONFLICT (coin_id) DO NOTHING`, [
-        coin.id,
-        draft.tiktokUsername,
-      ]);
+    const saved = (await one<CoinRow>(`UPDATE coins SET image_url = $2, image_ipfs = $3 WHERE id = $1 RETURNING *`, [coin.id, imageUrl, ipfs]))!;
+    if (tiktokUsername) {
+      await query(
+        `INSERT INTO tiktok_access_requests(coin_id, username, status) VALUES ($1, $2, 'connected') ON CONFLICT (coin_id) DO NOTHING`,
+        [coin.id, tiktokUsername],
+      );
     }
-    return (await one<CoinRow>(`UPDATE coins SET image_url = $2, image_ipfs = $3 WHERE id = $1 RETURNING *`, [coin.id, imageUrl, ipfs]))!;
+    if (pending) {
+      // Move the launch-form connection onto the new coin (from any earlier unlaunched draft of this creator).
+      await query(
+        `DELETE FROM tiktok_accounts WHERE open_id = $1 AND coin_id IN (SELECT id FROM coins WHERE creator_wallet = $2 AND status <> 'live')`,
+        [pending.open_id, wallet],
+      );
+      await query(
+        `INSERT INTO tiktok_accounts(coin_id, open_id, username, display_name, avatar_url, token_enc, token_expires_at,
+                                     refresh_token_enc, refresh_expires_at, status, scopes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'active',$10)`,
+        [
+          coin.id,
+          pending.open_id,
+          pending.username,
+          pending.display_name,
+          pending.avatar_url,
+          pending.token_enc,
+          pending.token_expires_at,
+          pending.refresh_token_enc,
+          pending.refresh_expires_at,
+          pending.scopes,
+        ],
+      );
+      await query(`DELETE FROM tiktok_pending_connections WHERE wallet = $1`, [wallet]);
+    } else if (carried) {
+      await query(`UPDATE tiktok_accounts SET coin_id = $2 WHERE coin_id = $1`, [carried.coin_id, coin.id]);
+    }
+    return saved;
   } catch (e) {
     await query(`DELETE FROM coins WHERE id = $1`, [coin.id]);
     throw e;

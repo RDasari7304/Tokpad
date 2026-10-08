@@ -10,6 +10,7 @@ import { verifyWebhookSignature } from "../domain/tiktok.js";
 import { logger } from "../lib/logger.js";
 import { openString, seal } from "../lib/secrets.js";
 import { getCoin } from "../services/coins.js";
+import { pendingConnection } from "../services/tiktokAccess.js";
 import { authorizeUrl, exchangeCode, getMe, PUBLISH_SCOPE, revokeToken } from "../services/tiktok.js";
 import { requireAuth } from "./auth.js";
 import { asyncHandler, HttpError } from "./util.js";
@@ -24,18 +25,45 @@ export async function lockedUsername(coin: { id: string; status: string; website
   return r?.username ?? null;
 }
 
-/** Step 1: creator clicks "Connect TikTok" on their coin page. */
+/**
+ * Step 1: the creator clicks "Connect TikTok", either in the launch form (no coin yet: the connection waits
+ * for the coin, keyed by their wallet) or on an existing coin's page (?coinId=...).
+ */
 tiktokRouter.get(
   "/connect",
   requireAuth,
   asyncHandler(async (req, res) => {
-    const coinId = z.string().uuid().parse(req.query.coinId);
-    const coin = await getCoin(coinId);
-    if (!coin || coin.creator_wallet !== req.wallet) throw new HttpError(403, "Only the creator can connect TikTok");
-    const state = jwt.sign({ coinId, wallet: req.wallet, n: randomBytes(8).toString("hex") }, config.JWT_SECRET, {
-      expiresIn: "15m",
-    });
+    const coinId = req.query.coinId ? z.string().uuid().parse(req.query.coinId) : null;
+    if (coinId) {
+      const coin = await getCoin(coinId);
+      if (!coin || coin.creator_wallet !== req.wallet) throw new HttpError(403, "Only the creator can connect TikTok");
+    }
+    const state = jwt.sign(
+      { ...(coinId ? { coinId } : { launch: true }), wallet: req.wallet, n: randomBytes(8).toString("hex") },
+      config.JWT_SECRET,
+      { expiresIn: "15m" },
+    );
     res.redirect(authorizeUrl(state));
+  }),
+);
+
+tiktokRouter.get(
+  "/pending",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const p = await pendingConnection(req.wallet!);
+    res.json({ tiktok: p ? { username: p.username, displayName: p.display_name, picture: p.avatar_url } : null });
+  }),
+);
+
+tiktokRouter.delete(
+  "/pending",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const p = await pendingConnection(req.wallet!);
+    if (p) await revokeToken(openString(p.token_enc)).catch(() => {});
+    await query(`DELETE FROM tiktok_pending_connections WHERE wallet = $1`, [req.wallet]);
+    res.json({ ok: true });
   }),
 );
 
@@ -44,15 +72,14 @@ tiktokRouter.get(
   "/callback",
   asyncHandler(async (req, res) => {
     let coinId: string | null = null;
+    let launch = false;
     const fail = (msg: string) =>
-      res.redirect(`${base()}${coinId ? `/coin/${coinId}` : "/"}?tt_error=${encodeURIComponent(msg)}`);
+      res.redirect(`${base()}${coinId ? `/coin/${coinId}` : launch ? "/launch" : "/"}?tt_error=${encodeURIComponent(msg)}`);
     try {
-      const state = jwt.verify(String(req.query.state ?? ""), config.JWT_SECRET) as { coinId: string; wallet: string };
-      coinId = state.coinId;
+      const state = jwt.verify(String(req.query.state ?? ""), config.JWT_SECRET) as { coinId?: string; wallet: string; launch?: boolean };
+      coinId = state.coinId ?? null;
+      launch = !!state.launch;
       if (req.query.error) return fail(String(req.query.error_description ?? "TikTok connection was cancelled"));
-
-      const coin = await getCoin(state.coinId);
-      if (!coin || coin.creator_wallet !== state.wallet) return fail("This coin doesn't belong to the wallet that started the connection");
 
       // Each step names itself in the error, so a failure says where it happened, not just "request error".
       const step = async <T,>(name: string, fn: () => Promise<T>): Promise<T> => {
@@ -70,6 +97,41 @@ tiktokRouter.get(
         return fail("Posting permission was not granted. Reconnect and allow Tokpad to post to your TikTok.");
       }
       const me = await step("Reading the TikTok profile", () => getMe(tokens.token));
+
+      if (launch) {
+        // Launch form: no coin yet. Keep the connection for this wallet until the coin is created.
+        const taken = await one(
+          `SELECT 1 FROM tiktok_accounts a JOIN coins c ON c.id = a.coin_id
+           WHERE a.open_id = $1 AND a.status = 'active' AND (c.status = 'live' OR c.creator_wallet <> $2)`,
+          [me.openId, state.wallet],
+        );
+        if (taken) return fail(`@${me.username} is already the influencer for another coin. Log in with a different TikTok account.`);
+        await query(
+          `INSERT INTO tiktok_pending_connections(wallet, open_id, username, display_name, avatar_url, token_enc, token_expires_at,
+                                                  refresh_token_enc, refresh_expires_at, scopes)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           ON CONFLICT (wallet) DO UPDATE SET open_id = EXCLUDED.open_id, username = EXCLUDED.username,
+             display_name = EXCLUDED.display_name, avatar_url = EXCLUDED.avatar_url, token_enc = EXCLUDED.token_enc,
+             token_expires_at = EXCLUDED.token_expires_at, refresh_token_enc = EXCLUDED.refresh_token_enc,
+             refresh_expires_at = EXCLUDED.refresh_expires_at, scopes = EXCLUDED.scopes, created_at = now()`,
+          [
+            state.wallet,
+            me.openId,
+            me.username,
+            me.displayName,
+            me.picture,
+            seal(tokens.token),
+            tokens.expiresAt,
+            seal(tokens.refreshToken),
+            tokens.refreshExpiresAt,
+            tokens.scopes,
+          ],
+        );
+        return res.redirect(`${base()}/launch?tt=connected`);
+      }
+
+      const coin = await getCoin(coinId ?? "");
+      if (!coin || coin.creator_wallet !== state.wallet) return fail("This coin doesn't belong to the wallet that started the connection");
 
       // The token's website links to the account it launched with, so only that account can be connected.
       const expected = await lockedUsername(coin);

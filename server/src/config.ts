@@ -57,6 +57,9 @@ const schema = z.object({
   TIKTOK_PRIVACY_LEVEL: z.enum(["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS", "FOLLOWER_OF_CREATOR", "SELF_ONLY"]).default("PUBLIC_TO_EVERYONE"),
   // Comment replies need TikTok's comment scopes (comment.list, comment.list.manage) approved for the app.
   TIKTOK_COMMENTS: bool(false),
+  // true: creators must log in with TikTok in the launch form before they can launch.
+  // false: TikTok is optional at launch (and can be connected later from the coin page).
+  TIKTOK_REQUIRED_AT_LAUNCH: bool(true),
   // Optional: the TikTok developer app ID, used only to link straight to the app's sandbox settings from Admin.
   TIKTOK_APP_ID: z.string().optional(),
 

@@ -24,3 +24,18 @@ export async function upsertAccessRequest(coinId: string, username: string): Pro
   );
   return { username: row!.username, status: row!.status, requestedAt: row!.requested_at, invitedAt: row!.invited_at };
 }
+
+/** The TikTok account connected in the launch form and waiting for the creator's next coin. */
+export async function pendingConnection(wallet: string) {
+  return one<{
+    open_id: string;
+    username: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    token_enc: string;
+    token_expires_at: Date;
+    refresh_token_enc: string;
+    refresh_expires_at: Date;
+    scopes: string[];
+  }>(`SELECT * FROM tiktok_pending_connections WHERE wallet = $1 AND refresh_expires_at > now()`, [wallet]);
+}

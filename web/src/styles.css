@@ -3440,3 +3440,40 @@ textarea.input {
 .post-media > .post-format {
   z-index: 1;
 }
+
+/* Launch form: the TikTok login step. */
+.tt-connect p {
+  margin: 0 0 12px;
+  color: var(--ink-soft);
+  max-width: 60ch;
+}
+.tt-connected {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--print);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.tt-connected img,
+.tt-connected-ph {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--paper-deep);
+  box-shadow: -2px -2px 0 var(--cyan), 2px 2px 0 var(--accent);
+  flex: none;
+}
+.tt-connected div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.tt-connected small {
+  color: var(--ink-soft);
+}
+.tt-connected .btn {
+  margin-left: auto;
+}

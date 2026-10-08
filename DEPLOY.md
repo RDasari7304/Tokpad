@@ -109,7 +109,7 @@ In your app at developers.tiktok.com:
 5. Webhooks → Callback URL: `https://yourdomain.com/api/tiktok/webhook` (TikTok tells us when a creator removes the app).
 6. App details: Terms `https://yourdomain.com/terms`, Privacy policy `https://yourdomain.com/privacy`, an icon, and a
    description.
-7. **Submit for review** (audit) with a screencast of: launch → enter username → log in with TikTok → a post appears.
+7. **Submit for review** (audit) with a screencast of: launch form → Log in with TikTok → launch → a post appears.
    Until approved, creators use the sandbox queue in Admin, and TikTok only allows private ("only me") posts.
 
 ## 8. Go-live check

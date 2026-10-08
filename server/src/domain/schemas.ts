@@ -67,14 +67,6 @@ export const tiktokUsernameSchema = z.string().transform((s, ctx) => {
 });
 
 export const coinDraftSchema = z.object({
-  // Optional: every influencer lives on Tokpad from launch. If a TikTok account is given here, the
-  // token's website on pump.fun links to it; otherwise the website is the coin's Tokpad page.
-  tiktokUsername: z
-    .string()
-    .trim()
-    .optional()
-    .transform((s) => (s ? s : undefined))
-    .pipe(tiktokUsernameSchema.optional()),
   name: z.string().trim().min(1).max(32),
   symbol: z
     .string()
