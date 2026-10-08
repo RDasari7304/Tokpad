@@ -6,7 +6,7 @@ import { CAMERA_SHOTS, CAPTION_STYLES, captionOpener, LIGHTING, pickVariety, POS
 import { LEGACY_PERSONALITIES, PERSONALITIES } from "../src/domain/catalog.ts";
 import { CONTENT_RULES, personaBrief, visualStyleText } from "../src/domain/persona.ts";
 import { normalizeTikTokUsername, photoTitle, pickPrivacy, postUrl, quotePostIds, verifyWebhookSignature } from "../src/domain/tiktok.ts";
-import { POSTS_PER_DAY } from "../src/domain/limits.ts";
+import { clampPostsPerDay, POSTS_PER_DAY, postingLimits } from "../src/domain/limits.ts";
 import { coinPageUrl, coinWebsite } from "../src/domain/links.ts";
 import { applyTier, TIERS } from "../src/domain/tiers.ts";
 import { imageInput, supportsMultiReference } from "../src/domain/images.ts";
@@ -296,12 +296,24 @@ describe("emoji limit", () => {
 });
 
 describe("posting frequency", () => {
-  it("holds every coin to 12 to 24 posts a day", () => {
-    assert.deepEqual(POSTS_PER_DAY, { min: 12, max: 24 });
+  it("never goes past TikTok's daily cap", () => {
+    assert.deepEqual(POSTS_PER_DAY, { min: 1, max: 15 });
+    assert.equal(postingLimits("open", 12, 24).max, 15);
+  });
+  it("holds live coins to the configured minimum once the app is approved", () => {
+    assert.deepEqual(postingLimits("open", 12, 15), { min: 12, max: 15, default: 12 });
+    assert.equal(clampPostsPerDay(postingLimits("open", 12, 15), 3), 12);
+  });
+  it("lets coins post a little while the app is unaudited", () => {
+    const l = postingLimits("testers", 12, 15);
+    assert.deepEqual(l, { min: 1, max: 15, default: 3 });
+    assert.equal(clampPostsPerDay(l, 2), 2);
+    assert.equal(clampPostsPerDay(l, undefined), 3);
+    assert.equal(clampPostsPerDay(l, 40), 15);
   });
   it("schedules 12 a day as roughly every 2 hours", () => {
     const from = new Date("2026-01-01T00:00:00Z");
-    const gap = nextPostAt(from, POSTS_PER_DAY.min, () => 0.5).getTime() - from.getTime();
+    const gap = nextPostAt(from, 12, () => 0.5).getTime() - from.getTime();
     assert.equal(gap, 2 * 3600_000);
   });
 });

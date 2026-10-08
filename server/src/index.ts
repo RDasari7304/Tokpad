@@ -7,7 +7,7 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import { pinoHttp } from "pino-http";
-import { config, isProd } from "./config.js";
+import { config, isProd, posting } from "./config.js";
 import { reelSeconds, reelShots, reelsHaveAudio } from "./services/ai/fal.js";
 import { migrate } from "./db/migrate.js";
 import { pool } from "./db/pool.js";
@@ -76,8 +76,9 @@ app.get("/api/config", (_req, res) => {
     tiktokComments: config.TIKTOK_COMMENTS,
     tiktokRequired: config.TIKTOK_REQUIRED_AT_LAUNCH,
     limits: {
-      minPostsPerDay: config.CONTENT_MIN_POSTS_PER_DAY,
-      maxPostsPerDay: config.CONTENT_MAX_POSTS_PER_DAY,
+      minPostsPerDay: posting().min,
+      maxPostsPerDay: posting().max,
+      defaultPostsPerDay: posting().default,
       maxReelsPerWeek: config.CONTENT_MAX_REELS_PER_WEEK,
       nativeBuybackShare: config.NATIVE_COIN_MINT ? config.NATIVE_BUYBACK_SHARE : 0,
       treasuryMinBuySol: config.TREASURY_MIN_BUY_SOL,

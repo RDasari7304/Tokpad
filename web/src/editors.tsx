@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, humanize, type AppConfig, type CastMember, type ContentSettings, type Format, type Persona } from "./api";
 import { ChipChoice, Field, Notice } from "./components";
 
@@ -377,8 +377,25 @@ export function ContentEditor({ value, onChange, config }: { value: ContentSetti
     set("formats", has ? value.formats.filter((x) => x !== f) : [...value.formats, f]);
   };
   const FORMAT_LABELS = formatLabels(config);
+  const unaudited = config.tiktokAccessMode === "testers";
+  const min = config.limits.minPostsPerDay ?? 1;
+  const max = config.limits.maxPostsPerDay;
+  // Keep the setting inside what the site offers right now (it changes when TikTok approves the app).
+  useEffect(() => {
+    if (value.postsPerDay < min || value.postsPerDay > max) set("postsPerDay", config.limits.defaultPostsPerDay ?? min);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [min, max]);
+  const repliesPossible = !!config.tiktokComments && !unaudited;
   return (
     <div className="editor">
+      {unaudited && (
+        <Notice tone="warn">
+          <strong>TikTok early access.</strong> Until TikTok approves Tokpad: posts go to TikTok as <strong>private</strong>{" "}
+          (only you can see them), your TikTok account must be set to <strong>Private</strong> (TikTok → Settings and privacy →
+          Privacy → Private account), only a few accounts can post through Tokpad each day, and comment replies are off. Every
+          post still appears publicly on Tokpad.
+        </Notice>
+      )}
       <div className="format-options">
         {(Object.keys(FORMAT_LABELS) as Format[]).map((f) => (
           <label key={f} className={value.formats.includes(f) ? "option on" : "option"}>
@@ -391,12 +408,16 @@ export function ContentEditor({ value, onChange, config }: { value: ContentSetti
         ))}
       </div>
       <div className="grid-2">
-        <Field label="Posts per day" hint="The first post (a video, if videos are on) starts as soon as TikTok is connected.">
+        <Field
+          label="Posts per day"
+          hint={
+            unaudited
+              ? `Up to ${max} (TikTok's daily limit). Keep it low while posts are private: every post still costs AI credits.`
+              : `${min} to ${max} a day (TikTok allows about ${max} posts per account per day). The first post starts at launch.`
+          }
+        >
           <select className="input" value={value.postsPerDay} onChange={(e) => set("postsPerDay", Number(e.target.value))}>
-            {Array.from(
-              { length: config.limits.maxPostsPerDay - (config.limits.minPostsPerDay ?? 1) + 1 },
-              (_, i) => i + (config.limits.minPostsPerDay ?? 1),
-            ).map((n) => (
+            {Array.from({ length: max - min + 1 }, (_, i) => i + min).map((n) => (
               <option key={n} value={n}>
                 {n}
               </option>
@@ -452,6 +473,13 @@ export function ContentEditor({ value, onChange, config }: { value: ContentSetti
           <small>At most once a day, the character posts about the latest buyback and burn, using the real numbers.</small>
         </span>
       </label>
+      {!repliesPossible && (
+        <p className="sub-hint replies-off">
+          <strong>Comment replies</strong> switch on once TikTok approves Tokpad's app and its comment access
+          {unaudited ? " (private posts can't get comments)" : ""}.
+        </p>
+      )}
+      {repliesPossible && (
       <label className="switch">
         <input
           type="checkbox"
@@ -467,7 +495,8 @@ export function ContentEditor({ value, onChange, config }: { value: ContentSetti
           </small>
         </span>
       </label>
-      {value.commentReplies !== false && (
+      )}
+      {repliesPossible && value.commentReplies !== false && (
         <div className="grid-2">
           <Field label="Comment replies per day, at most" hint="Replies go out gradually, at most a dozen an hour.">
             <select

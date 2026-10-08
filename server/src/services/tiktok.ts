@@ -40,7 +40,7 @@ export class TikTokError extends Error {
   }
   /** TikTok's rate and posting limits: stop and try again later. */
   get isRateLimit() {
-    return ["rate_limit_exceeded", "spam_risk_too_many_posts", "spam_risk_too_many_pending_share", "40100429", "40016"].includes(this.code ?? "") || this.status === 429;
+    return ["rate_limit_exceeded", "spam_risk_too_many_posts", "spam_risk_too_many_pending_share", "reached_active_user_cap", "40100429", "40016"].includes(this.code ?? "") || this.status === 429;
   }
   /** The comment or video no longer exists, or can't be replied to (deleted, hidden, restricted). */
   get isGone() {
@@ -252,20 +252,32 @@ async function initPost(input: PublishInput, privacy: string, info: CreatorInfo)
   );
 }
 
+/** Shown when an unaudited app tries to post to a public account (TikTok only allows private ones). */
+export const PRIVATE_ACCOUNT_NEEDED =
+  "While Tokpad's TikTok app is waiting for TikTok's approval, TikTok only lets it post to private accounts. In TikTok, open Settings and privacy, then Privacy, turn on Private account, and the next post will go through.";
+
 /**
- * Posts straight to the creator's TikTok. Unaudited apps may only post privately: if TikTok says so,
- * the post goes out as private ("only me") rather than failing.
+ * Posts straight to the creator's TikTok. Until TikTok approves the app (testers mode), every post is private
+ * ("only me") and the creator's account itself must be private.
  */
 export async function publish(input: PublishInput, onPublishId?: (id: string) => Promise<void>) {
   let publishId = input.publishId ?? null;
   if (!publishId) {
     const info = await creatorInfo(input.token);
-    const privacy = pickPrivacy(info.privacy_level_options ?? [], config.TIKTOK_PRIVACY_LEVEL);
+    const wanted = config.TIKTOK_ACCESS_MODE === "testers" ? "SELF_ONLY" : config.TIKTOK_PRIVACY_LEVEL;
+    const privacy = pickPrivacy(info.privacy_level_options ?? [], wanted);
+    const attempt = (level: string) =>
+      initPost(input, level, info).catch((e) => {
+        if (e instanceof TikTokError && e.code === "unaudited_client_can_only_post_to_private_accounts" && level === "SELF_ONLY") {
+          throw new PermanentError(PRIVATE_ACCOUNT_NEEDED);
+        }
+        throw e;
+      });
     try {
-      publishId = (await initPost(input, privacy, info)).publish_id;
+      publishId = (await attempt(privacy)).publish_id;
     } catch (e) {
       if (!(e instanceof TikTokError) || e.code !== "unaudited_client_can_only_post_to_private_accounts" || privacy === "SELF_ONLY") throw e;
-      publishId = (await initPost(input, "SELF_ONLY", info)).publish_id;
+      publishId = (await attempt("SELF_ONLY")).publish_id;
     }
     await onPublishId?.(publishId);
   }

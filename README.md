@@ -137,6 +137,11 @@ coin page).
    automatically, so test posts show on the account but aren't public.
 4. Admin → TikTok access lists accounts creators asked for from coin pages (when TikTok isn't required at launch).
 
+While the app is unaudited (`TIKTOK_ACCESS_MODE=testers`), Tokpad follows TikTok's limits for unaudited apps:
+every post goes out as private (`SELF_ONLY`), the creator's TikTok account must itself be set to Private (otherwise
+the post fails with an explanation), only a few accounts can post through the app per day, and comment replies are
+off. Coins can choose 1-15 posts a day (default 3) instead of the usual minimum. Posts still show publicly on Tokpad.
+
 ### 4. Go live (audit)
 
 1. In the app, **Submit for review**. Include a screen recording of: open the launch form → Log in with TikTok →

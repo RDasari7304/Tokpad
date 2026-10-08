@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 import express, { Router } from "express";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
-import { config } from "../config.js";
+import { config, posting } from "../config.js";
+import { clampPostsPerDay } from "../domain/limits.js";
 import { enqueue } from "../db/jobs.js";
 import { one, query } from "../db/pool.js";
 import { nextPostAt } from "../domain/schedule.js";
@@ -173,10 +174,7 @@ tiktokRouter.get(
       if (!hasPosts) {
         // First connection: start the first post (a video when videos are on) right now, not on the next schedule tick,
         // and schedule the regular posts after it.
-        const perDay = Math.min(
-          config.CONTENT_MAX_POSTS_PER_DAY,
-          Math.max(config.CONTENT_MIN_POSTS_PER_DAY, coin.content_settings.postsPerDay ?? config.CONTENT_MIN_POSTS_PER_DAY),
-        );
+        const perDay = clampPostsPerDay(posting(), coin.content_settings.postsPerDay);
         await query(`UPDATE coins SET next_post_at = $2 WHERE id = $1`, [coin.id, nextPostAt(new Date(), perDay)]);
         await enqueue("content.plan", { coinId: coin.id, trigger: "first" }, { dedupeKey: `plan:${coin.id}`, maxAttempts: 3 });
       } else {

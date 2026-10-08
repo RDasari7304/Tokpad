@@ -3532,3 +3532,7 @@ textarea.input {
     grid-row: 2;
   }
 }
+
+.replies-off {
+  margin-top: 14px;
+}

@@ -251,7 +251,7 @@ export interface AppConfig {
   tiktokComments?: boolean;
   /** Creators must log in with TikTok in the launch form before launching. */
   tiktokRequired?: boolean;
-  limits: { minPostsPerDay: number; maxPostsPerDay: number; maxReelsPerWeek: number; nativeBuybackShare?: number; treasuryMinBuySol: number; treasuryBuyIntervalMin: number };
+  limits: { minPostsPerDay: number; maxPostsPerDay: number; defaultPostsPerDay?: number; maxReelsPerWeek: number; nativeBuybackShare?: number; treasuryMinBuySol: number; treasuryBuyIntervalMin: number };
   reels?: { seconds: number; shots?: number; audio: boolean };
   catalog: {
     personalities: Record<string, string>;

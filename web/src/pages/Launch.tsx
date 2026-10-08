@@ -158,6 +158,12 @@ export default function Launch() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // New coins start at the site's default posting pace (lower while the TikTok app is unaudited).
+  useEffect(() => {
+    const d = config?.limits.defaultPostsPerDay;
+    if (d) setContent((c) => (c.postsPerDay === defaultContent().postsPerDay ? { ...c, postsPerDay: d } : c));
+  }, [config?.limits.defaultPostsPerDay]);
+
   useEffect(() => {
     if (!sessionWallet) return setTiktok(null);
     api<{ tiktok: PendingTikTok | null }>("/tiktok/pending")

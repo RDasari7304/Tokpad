@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { z } from "zod";
+import { postingLimits } from "./domain/limits.js";
 import { applyTier } from "./domain/tiers.js";
 
 const bool = (def: boolean) =>
@@ -143,3 +144,6 @@ function load(): Config {
 
 export const config = load();
 export const isProd = config.NODE_ENV === "production";
+
+/** Posts-per-day range on offer right now (narrower while the TikTok app is unaudited). */
+export const posting = () => postingLimits(config.TIKTOK_ACCESS_MODE, config.CONTENT_MIN_POSTS_PER_DAY, config.CONTENT_MAX_POSTS_PER_DAY);

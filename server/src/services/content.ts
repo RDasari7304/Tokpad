@@ -1,4 +1,5 @@
-import { config } from "../config.js";
+import { config, posting } from "../config.js";
+import { clampPostsPerDay } from "../domain/limits.js";
 import { enqueue, PermanentError } from "../db/jobs.js";
 import { one, query } from "../db/pool.js";
 import { captionViolations, finalizeCaption } from "../domain/caption.js";
@@ -811,10 +812,7 @@ export async function scheduleDuePosts() {
      LIMIT 50`,
   );
   for (const c of due.rows) {
-    const setting = Math.min(
-      config.CONTENT_MAX_POSTS_PER_DAY,
-      Math.max(config.CONTENT_MIN_POSTS_PER_DAY, c.content_settings.postsPerDay ?? config.CONTENT_MIN_POSTS_PER_DAY),
-    );
+    const setting = clampPostsPerDay(posting(), c.content_settings.postsPerDay);
     const perDay = postsPerDayFor(c.activity_state ?? "active", c.on_tt ? setting : Math.min(setting, config.PAD_POSTS_PER_DAY));
     if (perDay <= 0) continue;
     await query(`UPDATE coins SET next_post_at = $2 WHERE id = $1`, [c.id, nextPostAt(new Date(), perDay)]);
