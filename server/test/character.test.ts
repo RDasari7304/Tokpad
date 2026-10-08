@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { higgsfieldVideoBody, isTerminal, readHiggsfieldStatus } from "../src/domain/higgsfield.ts";
 import { castText, personaBrief } from "../src/domain/persona.ts";
 import { personaSchema } from "../src/domain/schemas.ts";
 import { normalizeArc, seriesLabel, storyBrief, type Arc } from "../src/domain/story.ts";
@@ -49,23 +48,5 @@ describe("storylines toward the goal", () => {
     assert.match(brief, /picks up right where the last part left off/);
     assert.match(brief, /step toward your big goal\. Gets the permit/);
     assert.doesNotMatch(storyBrief(arc), /Part \d of the series/);
-  });
-});
-
-describe("higgsfield", () => {
-  it("reads statuses and the video url", () => {
-    const done = readHiggsfieldStatus({ status: "completed", request_id: "r", video: { url: "https://v/x.mp4" } });
-    assert.deepEqual(done, { state: "completed", videoUrl: "https://v/x.mp4", error: null });
-    assert.equal(readHiggsfieldStatus({ status: "in_progress" }).state, "in_progress");
-    assert.equal(isTerminal("in_progress"), false);
-    assert.equal(isTerminal("nsfw"), true);
-    assert.match(readHiggsfieldStatus({ status: "nsfw" }).error ?? "", /content filter/);
-    assert.equal(readHiggsfieldStatus({ status: "CANCELLED" }).state, "canceled");
-    assert.equal(readHiggsfieldStatus({}).state, "unknown");
-  });
-  it("builds the request body with model extras", () => {
-    assert.deepEqual(higgsfieldVideoBody("walk", "https://i/a.jpg", '{"duration":5}'), { image_url: "https://i/a.jpg", prompt: "walk", duration: 5 });
-    assert.deepEqual(higgsfieldVideoBody("walk", "https://i/a.jpg", "not json"), { image_url: "https://i/a.jpg", prompt: "walk" });
-    assert.equal((higgsfieldVideoBody("x".repeat(3000), "u", "{}").prompt as string).length, 2500);
   });
 });

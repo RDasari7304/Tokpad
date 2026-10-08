@@ -178,14 +178,6 @@ from a one-line idea (one Claude call, counted in the AI budget).
   previous part. Turn it off per coin with `contentSettings.seriesLabels=false`.
 - The cast and goal are in every planning prompt, so the same people and the same ambition keep coming back.
 
-## Video engines
-
-Videos render on fal.ai by default (`FAL_REEL_MODEL`). Set `VIDEO_PROVIDER=higgsfield` to use Higgsfield's API instead
-(see `.env.example`). Tokpad sends the keyframe as `image_url` plus the prompt to `HIGGSFIELD_VIDEO_ENDPOINT` and polls
-the request until it completes. Higgsfield's preset "templates" and effects are mostly features of its consumer app;
-if your model's API page lists a preset or motion field, add it to `HIGGSFIELD_VIDEO_PARAMS`. Set `COST_REEL_USD` to
-the per-clip price of the model you pick, so the daily budget stays accurate.
-
 ## Deploy (Render)
 
 **Full step-by-step guide: [DEPLOY.md](DEPLOY.md).** Short version:
