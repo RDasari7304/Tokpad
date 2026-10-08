@@ -79,7 +79,12 @@ adminRouter.get(
          LIMIT 500`,
         [q],
       ),
-      query<{ n: number }>(`SELECT count(*)::int AS n FROM tiktok_access_requests WHERE status IN ('invited','connected')`),
+      // Sandbox target users in use: accounts added for coins plus accounts added from launch-form requests.
+      query<{ n: number }>(
+        `SELECT count(DISTINCT lower(username))::int AS n FROM (
+           SELECT username FROM tiktok_access_requests WHERE status IN ('invited','connected')
+           UNION ALL SELECT username FROM tiktok_wallet_requests WHERE status IN ('invited','connected')) u`,
+      ),
     ]);
     res.json({
       accessMode: config.TIKTOK_ACCESS_MODE,
@@ -105,6 +110,39 @@ adminRouter.get(
         },
       })),
     });
+  }),
+);
+
+/** Launch-form access requests (no coin yet): creators waiting to be added as sandbox target users. */
+adminRouter.get(
+  "/tiktok-wallet-requests",
+  asyncHandler(async (_req, res) => {
+    const r = await query<any>(
+      `SELECT * FROM tiktok_wallet_requests ORDER BY (status = 'pending') DESC, requested_at DESC LIMIT 200`,
+    );
+    res.json({
+      requests: r.rows.map((x) => ({
+        wallet: x.wallet,
+        username: x.username,
+        status: x.status,
+        requestedAt: x.requested_at,
+        invitedAt: x.invited_at,
+      })),
+    });
+  }),
+);
+
+adminRouter.post(
+  "/tiktok-wallet-requests/:wallet/invited",
+  asyncHandler(async (req, res) => {
+    const wallet = z.string().min(32).max(64).parse(req.params.wallet);
+    const { invited } = z.object({ invited: z.boolean().default(true) }).parse(req.body ?? {});
+    await query(
+      `UPDATE tiktok_wallet_requests SET status = $2, invited_at = CASE WHEN $2 = 'invited' THEN now() ELSE NULL END
+       WHERE wallet = $1 AND status <> 'connected'`,
+      [wallet, invited ? "invited" : "pending"],
+    );
+    res.json({ ok: true });
   }),
 );
 

@@ -39,3 +39,38 @@ export async function pendingConnection(wallet: string) {
     scopes: string[];
   }>(`SELECT * FROM tiktok_pending_connections WHERE wallet = $1 AND refresh_expires_at > now()`, [wallet]);
 }
+
+export interface WalletRequestView {
+  username: string;
+  status: "pending" | "invited" | "connected";
+  requestedAt: Date;
+  invitedAt: Date | null;
+}
+
+const walletView = (r: { username: string; status: WalletRequestView["status"]; requested_at: Date; invited_at: Date | null }): WalletRequestView => ({
+  username: r.username,
+  status: r.status,
+  requestedAt: r.requested_at,
+  invitedAt: r.invited_at,
+});
+
+/** The launch-form access request for a wallet, if any. */
+export async function walletRequest(wallet: string): Promise<WalletRequestView | null> {
+  const r = await one<any>(`SELECT * FROM tiktok_wallet_requests WHERE wallet = $1`, [wallet]);
+  return r ? walletView(r) : null;
+}
+
+/** Creates or updates a launch-form access request. The same username keeps its progress; a new one starts over. */
+export async function upsertWalletRequest(wallet: string, username: string): Promise<WalletRequestView> {
+  const r = await one<any>(
+    `INSERT INTO tiktok_wallet_requests(wallet, username) VALUES ($1, $2)
+     ON CONFLICT (wallet) DO UPDATE SET
+       status = CASE WHEN tiktok_wallet_requests.username = EXCLUDED.username THEN tiktok_wallet_requests.status ELSE 'pending' END,
+       invited_at = CASE WHEN tiktok_wallet_requests.username = EXCLUDED.username THEN tiktok_wallet_requests.invited_at ELSE NULL END,
+       requested_at = CASE WHEN tiktok_wallet_requests.username = EXCLUDED.username THEN tiktok_wallet_requests.requested_at ELSE now() END,
+       username = EXCLUDED.username
+     RETURNING *`,
+    [wallet, username],
+  );
+  return walletView(r);
+}

@@ -3536,3 +3536,85 @@ textarea.input {
 .replies-off {
   margin-top: 14px;
 }
+
+/* Launch form: early-access request states. */
+.tt-request {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--print);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.tt-request div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.tt-request small {
+  color: var(--ink-soft);
+}
+.tt-request .btn {
+  margin-left: auto;
+}
+.tt-request-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--warn);
+  flex: none;
+  animation: tt-pulse 1.6s ease-in-out infinite;
+}
+@keyframes tt-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tt-request-dot {
+    animation: none;
+  }
+}
+.tt-connect-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.access-requests {
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.access-list {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.access-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  background: var(--print);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+.access-meta {
+  color: var(--ink-soft);
+  font-size: var(--t-sm);
+}
+.access-action {
+  margin-left: auto;
+}
+.tt-state-invited {
+  color: var(--cyan-deep);
+  font-weight: 600;
+}

@@ -58,6 +58,102 @@ const ago = (iso: string | null) => {
   return h < 1 ? `${Math.max(1, Math.round(h * 60))} min ago` : h < 48 ? `${Math.round(h)} h ago` : `${Math.round(h / 24)} days ago`;
 };
 
+interface WalletRequest {
+  wallet: string;
+  username: string;
+  status: "pending" | "invited" | "connected";
+  requestedAt: string;
+  invitedAt: string | null;
+}
+
+const REQUEST_LABEL: Record<WalletRequest["status"], string> = {
+  pending: "Needs adding",
+  invited: "Added, waiting for them to log in",
+  connected: "Connected",
+};
+
+/** Launch-form requests (no coin yet): creators waiting to be added as TikTok sandbox users. */
+function AccessRequests({ sandboxUrl, onChange }: { sandboxUrl: string; onChange: () => void }) {
+  const [requests, setRequests] = useState<WalletRequest[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [showDone, setShowDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const load = () =>
+    api<{ requests: WalletRequest[] }>("/admin/tiktok-wallet-requests")
+      .then((r) => setRequests(r.requests))
+      .catch((e) => setError(e.message));
+  useEffect(() => {
+    load();
+  }, []);
+  const mark = async (r: WalletRequest, invited: boolean) => {
+    setBusy(r.wallet);
+    try {
+      await api(`/admin/tiktok-wallet-requests/${r.wallet}/invited`, { method: "POST", json: { invited } });
+      await load();
+      onChange();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+  const copy = (u: string) => {
+    navigator.clipboard.writeText(u).catch(() => {});
+    setCopied(u);
+    setTimeout(() => setCopied(null), 1200);
+  };
+  if (error) return <p className="field-error">{error}</p>;
+  if (!requests) return null;
+  const pending = requests.filter((r) => r.status === "pending");
+  const rest = requests.filter((r) => r.status !== "pending");
+  const row = (r: WalletRequest) => (
+    <li key={r.wallet} className="access-row">
+      <button type="button" className="queue-user" onClick={() => copy(r.username)} title="Copy username">
+        @{r.username} <span>{copied === r.username ? "Copied" : "Copy"}</span>
+      </button>
+      <span className="access-meta">
+        {shortAddr(r.wallet)} · {ago(r.requestedAt)}
+      </span>
+      <span className={`tt-state tt-state-${r.status}`}>{REQUEST_LABEL[r.status]}</span>
+      <span className="access-action">
+        {r.status === "pending" && (
+          <button className="btn btn-small btn-primary" disabled={busy === r.wallet} onClick={() => mark(r, true)}>
+            Mark added
+          </button>
+        )}
+        {r.status === "invited" && (
+          <button className="btn btn-small btn-quiet" disabled={busy === r.wallet} onClick={() => mark(r, false)}>
+            Undo
+          </button>
+        )}
+      </span>
+    </li>
+  );
+  return (
+    <div className="access-requests">
+      <h3 className="sub">Waiting for TikTok access {pending.length > 0 && <span className="chip-count">{pending.length}</span>}</h3>
+      <p className="sub-hint">
+        Creators asking from the launch form. For each one: copy the username, add it in{" "}
+        <a href={sandboxUrl} target="_blank" rel="noreferrer">
+          your app's Sandbox → Target users
+        </a>
+        , then click Mark added. Their launch form switches to Log in with TikTok within 30 seconds.
+      </p>
+      {pending.length === 0 && <p className="muted">No one waiting.</p>}
+      <ul className="access-list">{pending.map(row)}</ul>
+      {rest.length > 0 && (
+        <>
+          <button type="button" className="link-btn" onClick={() => setShowDone((v) => !v)}>
+            {showDone ? "Hide" : "Show"} added and connected ({rest.length})
+          </button>
+          {showDone && <ul className="access-list">{rest.map(row)}</ul>}
+        </>
+      )}
+    </div>
+  );
+}
+
 /** Admin: every coin created so far, with its creator and TikTok sandbox access status. */
 export function AdminCoins() {
   const [data, setData] = useState<AdminCoinsResponse | null>(null);
@@ -92,9 +188,10 @@ export function AdminCoins() {
 
   return (
     <div className="admin-coins">
+      {testers && <AccessRequests sandboxUrl={data.sandboxUrl} onChange={() => load()} />}
       {testers ? (
         <p className="sub-hint">
-          To give a creator access: copy their TikTok username, open{" "}
+          Coins that asked for TikTok from their coin page. To give a creator access: copy their TikTok username, open{" "}
           <a href={data.sandboxUrl} target="_blank" rel="noreferrer">
             your app's Sandbox in the TikTok developer portal
           </a>

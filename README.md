@@ -135,7 +135,10 @@ coin page).
    target users can log in while the app is unaudited, and TikTok allows a limited number of them.
 3. Keep `TIKTOK_ACCESS_MODE=testers`. Unaudited apps can only post **privately** ("only me"); Tokpad does this
    automatically, so test posts show on the account but aren't public.
-4. Admin → TikTok access lists accounts creators asked for from coin pages (when TikTok isn't required at launch).
+4. Creators request access from step 1 of the launch form by entering their TikTok username. It appears in
+   **Admin → TikTok access → Waiting for TikTok access**: copy the username, add it under Sandbox → Target users,
+   click **Mark added**, and their launch form switches to **Log in with TikTok** within 30 seconds. (Coins launched
+   without TikTok can also ask from their coin page; those show in the coin list below it.)
 
 While the app is unaudited (`TIKTOK_ACCESS_MODE=testers`), Tokpad follows TikTok's limits for unaudited apps:
 every post goes out as private (`SELF_ONLY`), the creator's TikTok account must itself be set to Private (otherwise

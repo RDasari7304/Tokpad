@@ -11,7 +11,8 @@ import { verifyWebhookSignature } from "../domain/tiktok.js";
 import { logger } from "../lib/logger.js";
 import { openString, seal } from "../lib/secrets.js";
 import { getCoin } from "../services/coins.js";
-import { pendingConnection } from "../services/tiktokAccess.js";
+import { pendingConnection, upsertWalletRequest, walletRequest } from "../services/tiktokAccess.js";
+import { tiktokUsernameSchema } from "../domain/schemas.js";
 import { authorizeUrl, exchangeCode, getMe, PUBLISH_SCOPE, revokeToken } from "../services/tiktok.js";
 import { requireAuth } from "./auth.js";
 import { asyncHandler, HttpError } from "./util.js";
@@ -45,6 +46,24 @@ tiktokRouter.get(
       { expiresIn: "15m" },
     );
     res.redirect(authorizeUrl(state));
+  }),
+);
+
+/** Launch form, while the app is unaudited: the creator's request to be added as a sandbox user. */
+tiktokRouter.get(
+  "/access-request",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    res.json({ request: await walletRequest(req.wallet!) });
+  }),
+);
+
+tiktokRouter.put(
+  "/access-request",
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { username } = z.object({ username: tiktokUsernameSchema }).parse(req.body);
+    res.json({ request: await upsertWalletRequest(req.wallet!, username) });
   }),
 );
 
@@ -128,6 +147,7 @@ tiktokRouter.get(
             tokens.scopes,
           ],
         );
+        await query(`UPDATE tiktok_wallet_requests SET status = 'connected' WHERE wallet = $1`, [state.wallet]);
         return res.redirect(`${base()}/launch?tt=connected`);
       }
 

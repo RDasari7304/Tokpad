@@ -1,8 +1,8 @@
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { api, ApiError, humanize, type AppConfig, type Coin, type ContentSettings, type Persona } from "../api";
+import { api, ApiError, humanize, normalizeTikTokUsername, type AppConfig, type Coin, type ContentSettings, type Persona } from "../api";
 import { Field, Notice } from "../components";
 import {
   ContentEditor,
@@ -13,6 +13,120 @@ import {
 } from "../editors";
 import { decodeTx, signAndLaunch } from "../launchTx";
 import { useSession } from "../session";
+
+interface AccessRequest {
+  username: string;
+  status: "pending" | "invited" | "connected";
+  requestedAt: string;
+}
+
+const ago = (iso: string) => {
+  const m = Math.max(1, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
+  return m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
+};
+
+/**
+ * Step 1 while the TikTok app is unaudited: only accounts the Tokpad team adds as sandbox users can log in,
+ * so the creator first requests access with their username, then logs in once it's approved.
+ */
+function EarlyAccess(props: {
+  request: AccessRequest | null | undefined;
+  signedIn: boolean;
+  onSignIn: () => Promise<void>;
+  onRequest: (username: string) => Promise<void>;
+  onLogin: () => void;
+}) {
+  const { request } = props;
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const u = normalizeTikTokUsername(value);
+    if (!u) return setError("Use letters, numbers, periods and underscores (2-24, not ending in a period).");
+    setBusy(true);
+    try {
+      if (!props.signedIn) await props.onSignIn();
+      await props.onRequest(u);
+      setEditing(false);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!request || editing) {
+    return (
+      <div className="tt-connect">
+        <p>
+          Tokpad is in early access, so TikTok only lets approved accounts log in. Enter the TikTok account your character
+          will post from and we'll approve it, usually within a day. This page updates on its own.
+        </p>
+        <form className="username-form" onSubmit={submit}>
+          <span className="at" aria-hidden>
+            @
+          </span>
+          <input
+            className="input"
+            value={value}
+            maxLength={25}
+            autoCapitalize="off"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="your.tiktok"
+            aria-label="TikTok username"
+            onChange={(e) => setValue(e.target.value)}
+          />
+          <button className="btn btn-primary" disabled={busy || !value.trim()}>
+            {busy ? "Sending…" : props.signedIn ? "Request access" : "Sign in and request access"}
+          </button>
+          {request && (
+            <button type="button" className="btn btn-small btn-quiet" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          )}
+        </form>
+        {error && <span className="field-error">{error}</span>}
+      </div>
+    );
+  }
+
+  if (request.status === "pending") {
+    return (
+      <div className="tt-request">
+        <span className="tt-request-dot" aria-hidden />
+        <div>
+          <strong>Waiting for approval: @{request.username}</strong>
+          <small>Requested {ago(request.requestedAt)}. Fill in the rest of the form meanwhile; this updates on its own.</small>
+        </div>
+        <button type="button" className="btn btn-small btn-quiet" onClick={() => { setValue(request.username); setEditing(true); }}>
+          Change
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="tt-connect">
+      <p>
+        <strong>@{request.username} is approved.</strong> Before you log in, set that TikTok account to Private (TikTok →
+        Settings and privacy → Privacy → Private account).
+      </p>
+      <div className="tt-connect-actions">
+        <button type="button" className="btn btn-primary" onClick={props.onLogin}>
+          Log in with TikTok
+        </button>
+        <button type="button" className="btn btn-small btn-quiet" onClick={() => { setValue(""); setEditing(true); }}>
+          Use a different account
+        </button>
+      </div>
+    </div>
+  );
+}
 
 interface PendingTikTok {
   username: string;
@@ -164,6 +278,20 @@ export default function Launch() {
     if (d) setContent((c) => (c.postsPerDay === defaultContent().postsPerDay ? { ...c, postsPerDay: d } : c));
   }, [config?.limits.defaultPostsPerDay]);
 
+  // Early access: the creator's request to be added as a TikTok sandbox user (checked every 30s while waiting).
+  const [accessRequest, setAccessRequest] = useState<AccessRequest | null | undefined>(undefined);
+  const testers = config?.tiktokAccessMode === "testers";
+  useEffect(() => {
+    if (!testers || !sessionWallet) return setAccessRequest(null);
+    const load = () =>
+      api<{ request: AccessRequest | null }>("/tiktok/access-request")
+        .then((r) => setAccessRequest(r.request))
+        .catch(() => setAccessRequest(null));
+    load();
+    const id = setInterval(() => !document.hidden && load(), 30_000);
+    return () => clearInterval(id);
+  }, [testers, sessionWallet]);
+
   useEffect(() => {
     if (!sessionWallet) return setTiktok(null);
     api<{ tiktok: PendingTikTok | null }>("/tiktok/pending")
@@ -293,13 +421,28 @@ export default function Launch() {
                 </button>
               )}
             </div>
+          ) : testers ? (
+            <EarlyAccess
+              request={accessRequest}
+              signedIn={!!publicKey && sessionWallet === publicKey.toBase58()}
+              onSignIn={async () => {
+                if (!publicKey) {
+                  setVisible(true);
+                  throw new Error("Connect your wallet first, then send the request.");
+                }
+                await signIn();
+              }}
+              onRequest={async (username) => {
+                const r = await api<{ request: AccessRequest }>("/tiktok/access-request", { method: "PUT", json: { username } });
+                setAccessRequest(r.request);
+              }}
+              onLogin={connectTikTok}
+            />
           ) : (
             <div className="tt-connect">
               <p>
                 Log in with the TikTok account your coin's character will post from. Tokpad asks TikTok for permission to
                 read your profile and publish posts for you; you can remove it any time in TikTok's settings.
-                {config.tiktokAccessMode === "testers" &&
-                  " Tokpad is in early access, so the account must be approved by the Tokpad team before it can log in."}
               </p>
               <button type="button" className="btn btn-primary" onClick={connectTikTok} disabled={tiktok === undefined && !!sessionWallet}>
                 {!publicKey ? "Connect wallet, then TikTok" : "Log in with TikTok"}
