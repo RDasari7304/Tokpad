@@ -15,6 +15,7 @@ function toArc(r: any): Arc {
     id: r.id,
     title: r.title,
     premise: r.premise,
+    goalStep: r.goal_step ?? "",
     beats: r.beats,
     currentBeat: r.current_beat,
     postsInBeat: r.posts_in_beat,
@@ -32,6 +33,11 @@ const ARC_SCHEMA = {
   properties: {
     title: { type: "string", description: "A short, catchy name for this storyline (2 to 6 words)." },
     premise: { type: "string", description: "Two or three sentences: the situation, what you want, and what's in the way." },
+    goal_step: {
+      type: "string",
+      description:
+        "One sentence: how this storyline moves you toward your big goal (a step closer, a setback, or a twist that changes the path). It must clearly connect to the goal.",
+    },
     beats: {
       type: "array",
       description: `${MIN_BEATS} to ${MAX_BEATS} episodes, in order: a setup, rising trouble, a turning point, a climax and a resolution.`,
@@ -49,7 +55,7 @@ const ARC_SCHEMA = {
       },
     },
   },
-  required: ["title", "premise", "beats"],
+  required: ["title", "premise", "goal_step", "beats"],
   additionalProperties: false,
 };
 
@@ -63,8 +69,8 @@ export async function ensureArc(coin: CoinRow, context: { memories: string[]; li
   if (current) return current;
   if (!(await reserveSpend(config.COST_LLM_USD))) return null;
 
-  const past = await query<{ title: string; premise: string; beats: any[] }>(
-    `SELECT title, premise, beats FROM story_arcs WHERE coin_id = $1 AND status = 'done' ORDER BY completed_at DESC LIMIT 3`,
+  const past = await query<{ title: string; premise: string; goal_step: string; beats: any[] }>(
+    `SELECT title, premise, goal_step, beats FROM story_arcs WHERE coin_id = $1 AND status = 'done' ORDER BY completed_at DESC LIMIT 5`,
     [coin.id],
   );
   const friends = await query<{ name: string; summary: string }>(
@@ -76,12 +82,13 @@ export async function ensureArc(coin: CoinRow, context: { memories: string[]; li
   const pastText = past.rows
     .map((a) => {
       const last = a.beats[a.beats.length - 1];
-      return `- "${a.title}": ${a.premise} Ending: ${last?.recap ?? last?.summary ?? ""}`;
+      return `- "${a.title}": ${a.premise}${a.goal_step ? ` Toward your goal: ${a.goal_step}` : ""} Ending: ${last?.recap ?? last?.summary ?? ""}`;
     })
     .join("\n");
 
   try {
-    const raw = await structured<{ title: string; premise: string; beats: Array<{ title: string; summary: string }> }>({
+    const goal = coin.persona.goal?.trim();
+    const raw = await structured<{ title: string; premise: string; goal_step: string; beats: Array<{ title: string; summary: string }> }>({
       system: `${personaBrief(coin, coin.persona)}\n\n${CONTENT_RULES}`,
       user: [
         `Plan your next storyline: a story you'll live through on TikTok over the next few days, told across many posts.`,
@@ -93,6 +100,9 @@ export async function ensureArc(coin: CoinRow, context: { memories: string[]; li
         friends.rows.length
           ? `Characters you've met in the Room (they may make cameo appearances, as themselves):\n${friends.rows.map((f) => `- ${f.name}: ${f.summary}`).join("\n")}`
           : "",
+        goal
+          ? `Your big goal is: ${goal}. This storyline is the next chapter on the way there. It must clearly move you closer to it, or set you back in a way that raises the stakes. Over many storylines, followers should watch you get visibly closer to the goal.`
+          : "You don't have a stated goal yet: give yourself a clear, specific want for this storyline that fits who you are.",
         `Make it unmistakably YOUR story: driven by your personality, backstory and goals, with a clear want, escalating trouble, a turning point and a payoff. It must work visually (each episode becomes 2-3 images or short videos) and stay light and fun. No price talk, no buy calls.`,
       ]
         .filter(Boolean)
@@ -105,9 +115,9 @@ export async function ensureArc(coin: CoinRow, context: { memories: string[]; li
     const arc = normalizeArc(raw);
     if (!arc) return null;
     const r = await one(
-      `INSERT INTO story_arcs(coin_id, title, premise, beats) VALUES ($1,$2,$3,$4)
+      `INSERT INTO story_arcs(coin_id, title, premise, goal_step, beats) VALUES ($1,$2,$3,$5,$4)
        ON CONFLICT (coin_id) WHERE status = 'active' DO NOTHING RETURNING *`,
-      [coin.id, arc.title, arc.premise, JSON.stringify(arc.beats)],
+      [coin.id, arc.title, arc.premise, JSON.stringify(arc.beats), arc.goalStep],
     );
     logger.info({ coin: coin.symbol, title: arc.title }, "new storyline");
     const created = r ? toArc(r) : await activeArc(coin.id);

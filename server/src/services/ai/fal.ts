@@ -1,6 +1,7 @@
 import { config } from "../../config.js";
 import { imageInput } from "../../domain/images.js";
 import { clampShots, clipSeconds, supportsAudio, videoFamily, videoInput } from "../../domain/reel.js";
+import { higgsfieldVideo } from "./higgsfield.js";
 
 /**
  * fal.ai queue API: submit, poll status, fetch result. Model IDs are configurable via env so
@@ -70,13 +71,15 @@ const EXPECTED_VIDEO_MS = 4 * 60_000;
  * `onProgress` receives an estimated fraction (0–0.95) every ~10 seconds while it renders.
  */
 export async function generateVideo(prompt: string, keyframeUrl: string, onProgress?: (fraction: number) => Promise<unknown>) {
+  // Eases toward 95% so a slow render keeps moving without ever claiming to be finished.
+  const tick = onProgress ? (elapsed: number) => onProgress(Math.min(0.95, 1 - Math.exp(-elapsed / EXPECTED_VIDEO_MS * 1.6))) : undefined;
+  if (config.VIDEO_PROVIDER === "higgsfield") return higgsfieldVideo(prompt, keyframeUrl, tick);
   const model = config.FAL_REEL_MODEL;
   const out = await run<{ video?: { url: string } }>(
     model,
     videoInput(model, prompt, keyframeUrl, config.REEL_SECONDS, config.REEL_AUDIO, config.REEL_RESOLUTION),
     15 * 60_000,
-    // Eases toward 95% so a slow render keeps moving without ever claiming to be finished.
-    onProgress ? (elapsed) => onProgress(Math.min(0.95, 1 - Math.exp(-elapsed / EXPECTED_VIDEO_MS * 1.6))) : undefined,
+    tick,
   );
   const url = out.video?.url;
   if (!url) throw new Error("Video model returned no video");
@@ -84,10 +87,12 @@ export async function generateVideo(prompt: string, keyframeUrl: string, onProgr
 }
 
 /** True when Reels will have sound and speech with the configured model. */
-export const reelsHaveAudio = () => config.REEL_AUDIO && supportsAudio(config.FAL_REEL_MODEL);
+export const reelsHaveAudio = () =>
+  config.REEL_AUDIO && (config.VIDEO_PROVIDER === "higgsfield" ? config.HIGGSFIELD_AUDIO : supportsAudio(config.FAL_REEL_MODEL));
 
 /** The clip length the configured model will actually render. */
-export const reelSeconds = () => clipSeconds(videoFamily(config.FAL_REEL_MODEL), config.REEL_SECONDS);
+export const reelSeconds = () =>
+  config.VIDEO_PROVIDER === "higgsfield" ? config.REEL_SECONDS : clipSeconds(videoFamily(config.FAL_REEL_MODEL), config.REEL_SECONDS);
 
 /** Shots per Reel (each its own clip, edited together). */
 export const reelShots = () => clampShots(config.REEL_SHOTS);

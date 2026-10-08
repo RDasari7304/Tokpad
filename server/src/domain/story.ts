@@ -15,6 +15,8 @@ export interface Arc {
   id: string;
   title: string;
   premise: string;
+  /** How this storyline moves the character toward its big goal (or sets it back). */
+  goalStep?: string;
   beats: Beat[];
   currentBeat: number;
   postsInBeat: number;
@@ -46,7 +48,7 @@ export function isStandalone(postNumber: number, trigger: string): boolean {
 }
 
 /** Clean up a planned arc from the model: trims, limits sizes, requires enough episodes. */
-export function normalizeArc(raw: { title?: string; premise?: string; beats?: Array<{ title?: string; summary?: string }> }) {
+export function normalizeArc(raw: { title?: string; premise?: string; goal_step?: string; beats?: Array<{ title?: string; summary?: string }> }) {
   const beats = (raw.beats ?? [])
     .map((b) => ({ title: String(b.title ?? "").trim().slice(0, 80), summary: String(b.summary ?? "").trim().slice(0, 400) }))
     .filter((b) => b.title && b.summary)
@@ -55,7 +57,8 @@ export function normalizeArc(raw: { title?: string; premise?: string; beats?: Ar
   const title = String(raw.title ?? "").trim().slice(0, 80);
   const premise = String(raw.premise ?? "").trim().slice(0, 600);
   if (!title || !premise) return null;
-  return { title, premise, beats };
+  const goalStep = String(raw.goal_step ?? "").trim().slice(0, 300);
+  return { title, premise, goalStep, beats };
 }
 
 /**
@@ -77,7 +80,7 @@ export function advance(arc: Arc, opts: { recap: string; beatComplete: boolean }
 }
 
 /** The story section of a post's brief: what happened so far, this episode, and what it leads into. */
-export function storyBrief(arc: Arc): string {
+export function storyBrief(arc: Arc, part?: number): string {
   const n = arc.beats.length;
   const k = arc.currentBeat;
   const beat = arc.beats[k]!;
@@ -103,16 +106,26 @@ export function storyBrief(arc: Arc): string {
   return [
     `YOUR CURRENT STORYLINE: "${arc.title}"`,
     `Premise: ${arc.premise}`,
+    arc.goalStep ? `Why it matters: this storyline is a step toward your big goal. ${arc.goalStep}` : "",
     done ? `Episodes so far:\n${done}` : "",
     `Now: episode ${k + 1} of ${n}, "${beat.title}": ${beat.summary}`,
     beat.recap ? `Already happened in this episode: ${beat.recap}` : "",
     `This is post ${postNo} of about ${len} in this episode. ${position}`,
     nextUp && postNo >= len ? `Next episode (foreshadow it, don't spoil it): ${nextUp.title}` : "",
-    "Tell the story through what happens to you in this post. Followers should feel the continuity (callbacks, consequences, rising stakes) without you narrating it like a summary. Don't label posts \"Episode 3\" or \"Part 2\".",
+    part
+      ? `This post is shown on TikTok as Part ${part} of the series "${arc.title}" (the label is added to your caption automatically; don't write it yourself). ` +
+        (part > 1
+          ? "Open the caption with a hook that picks up right where the last part left off, so a new viewer gets it and a returning one feels the continuity."
+          : "Open the caption with a hook that makes people want Part 2.")
+      : "",
+    "Tell the story through what happens to you in this post. Followers should feel the continuity (callbacks, consequences, rising stakes) without you narrating it like a summary. End on something that makes people want the next part.",
   ]
     .filter(Boolean)
     .join("\n");
 }
+
+/** The first line of a story post's caption on TikTok: "Lost in the Arcade · Part 3". */
+export const seriesLabel = (title: string, part: number) => `${title} · Part ${part}`;
 
 /** Public view: titles and recaps of what has happened, never the episodes still to come. */
 export function publicArc(arc: Arc) {

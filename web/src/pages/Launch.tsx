@@ -144,7 +144,7 @@ export default function Launch() {
       setDescription(saved.description ?? "");
       setTwitter(saved.twitter ?? "");
       setTelegram(saved.telegram ?? "");
-      if (saved.persona) setPersona(saved.persona);
+      if (saved.persona) setPersona({ ...defaultPersona(), ...saved.persona });
       if (saved.content) setContent(saved.content);
       clearDraft();
     }
@@ -355,7 +355,7 @@ export default function Launch() {
           <h2>
             <span className="step-n">3</span> Character
           </h2>
-          <PersonaEditor value={persona} onChange={setPersona} config={config} />
+          <PersonaEditor value={persona} onChange={setPersona} config={config} draftFrom={{ name, symbol, description }} />
         </section>
 
         <section className="step">

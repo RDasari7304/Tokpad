@@ -6,7 +6,7 @@ import { CONTENT_RULES, personaBrief, personalityText, visualStyleText } from ".
 import { cleanSpokenLine, FILM_DIRECTION, maxSpokenWords, normalizeShots, reelStyle, reelVideoPrompt, shotRoles, speakingVoice, type ReelLook, type ReelShot } from "../domain/reel.js";
 import { postsPerDayFor, reelsAllowed } from "../domain/activity.js";
 import { supportsMultiReference } from "../domain/images.js";
-import { isStandalone, storyBrief, type Arc } from "../domain/story.js";
+import { isStandalone, seriesLabel, storyBrief, type Arc } from "../domain/story.js";
 import { chooseFormat, firstPostFormat, nextPostAt, type Format } from "../domain/schedule.js";
 import { captionOpener, pickVariety, type Variety } from "../domain/variety.js";
 import { logger } from "../lib/logger.js";
@@ -253,6 +253,8 @@ const ALIVE_RULES = `How to feel alive:
 - Let your recent memories shape this post: follow up on a storyline, call back to something from an earlier post, or show how a feeling has changed. Don't do this every time; sometimes start something new.
 - Notice time: the day, how long since your last post, how long you've existed. React to it naturally when it fits.
 - Have small, specific opinions, worries, hopes and running jokes. Be a little surprising.
+- Keep your big goal in view: most posts should show you working toward it, celebrating progress, or dealing with a setback. Followers should always know what you're chasing.
+- Your recurring cast are part of your life: bring one in often, keep their personalities and looks consistent, and let your relationships with them change over time.
 - Sound like a person posting, not a brand: no hashtags or calls to action inside the caption.
 - Emoji: none, or at most one per caption.`;
 
@@ -267,9 +269,14 @@ async function planWithClaude(
   // standalone posts are everyday moments in between that may nod to the story.
   const arc = opts.story ? await ensureArc(coin, { memories: ctx.memories, life: ctx.life }) : await activeArc(coin.id);
   const choice = arc && opts.story ? await fanChoice(arc.id, arc.currentBeat).catch(() => null) : null;
+  // Story posts go out as a numbered TikTok series ("<storyline> · Part 3"), so followers can follow along.
+  const part =
+    arc && opts.story && coin.content_settings.seriesLabels !== false
+      ? ((await one<{ n: number }>(`SELECT count(*)::int AS n FROM posts WHERE arc_id = $1`, [arc.id]))?.n ?? 0) + 1
+      : undefined;
   const storyText = arc
     ? opts.story
-      ? `${storyBrief(arc)}${choice ? `\nYour followers voted on how this episode goes, and they chose: "${choice}". Make the episode go that way, and you can thank them for picking it.` : ""}`
+      ? `${storyBrief(arc, part)}${choice ? `\nYour followers voted on how this episode goes, and they chose: "${choice}". Make the episode go that way, and you can thank them for picking it.` : ""}`
       : `Your current storyline is "${arc.title}" (${arc.premise}). This post is NOT a story episode: it's an everyday, standalone moment in between. It can nod to what's going on, but don't move the plot forward.`
     : "";
   const variety = pickVariety(ctx.recentVariety);
@@ -361,7 +368,10 @@ async function planWithClaude(
         plan.caption += ` (with @${opts.collab.tiktok})`;
       }
     }
-    if (violations.length === 0 && plan.caption && plan.image_prompts.length) return { plan, arc: opts.story ? arc : null };
+    if (violations.length === 0 && plan.caption && plan.image_prompts.length) {
+      if (arc && part) plan.caption = `${seriesLabel(arc.title, part)}\n${plan.caption.replace(/^.*\bpart\s*\d+\b[^\n]*\n+/i, "")}`;
+      return { plan, arc: opts.story ? arc : null };
+    }
     feedback = `Your previous caption broke the rules (${violations.join(", ") || "missing image prompts"}). Rewrite it without that.`;
   }
   throw new PermanentError("Could not produce a caption that passes the content rules");

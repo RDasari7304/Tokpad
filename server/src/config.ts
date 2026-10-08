@@ -86,6 +86,26 @@ const schema = z.object({
   // Claude watches frames from every rendered shot and re-renders one that's broken or off-character.
   REEL_CHECK: bool(true),
   REEL_AUDIO: bool(true), // false = silent Reels (cheaper)
+  // Which service renders videos: fal (default, uses FAL_REEL_MODEL) or higgsfield (uses HIGGSFIELD_VIDEO_ENDPOINT).
+  VIDEO_PROVIDER: z.enum(["fal", "higgsfield"]).default("fal"),
+  // Higgsfield (cloud.higgsfield.ai → API keys): "KEY_ID:KEY_SECRET".
+  HIGGSFIELD_API_KEY: z.string().optional().default(""),
+  // The model endpoint on https://api.higgsfield.ai (see docs.higgsfield.ai → Models), image-to-video.
+  HIGGSFIELD_VIDEO_ENDPOINT: z.string().default("kling-video/v3.0/std/image-to-video"),
+  // Extra JSON fields for that model, e.g. {"duration":5} — check the model's page for the exact names.
+  HIGGSFIELD_VIDEO_PARAMS: z
+    .string()
+    .default("{}")
+    .refine((v) => {
+      try {
+        const p = JSON.parse(v || "{}");
+        return !!p && typeof p === "object" && !Array.isArray(p);
+      } catch {
+        return false;
+      }
+    }, "HIGGSFIELD_VIDEO_PARAMS must be a JSON object"),
+  // true if the chosen Higgsfield model generates sound and speech (lip-synced lines). Most image-to-video models are silent.
+  HIGGSFIELD_AUDIO: bool(false),
   COST_IMAGE_USD: num(0.04),
   COST_REEL_USD: num(0.7), // per shot. Kling 2.6 Pro with audio is about $0.14 per second
   COST_LLM_USD: num(0.02),
@@ -136,6 +156,11 @@ function load(): Config {
     const issues = parsed.error.issues.map((i) => `  ${i.path.join(".")}: ${i.message}`).join("\n");
     // eslint-disable-next-line no-console
     console.error(`Invalid environment configuration:\n${issues}\nSee .env.example`);
+    process.exit(1);
+  }
+  if (parsed.data.VIDEO_PROVIDER === "higgsfield" && !parsed.data.HIGGSFIELD_API_KEY.includes(":")) {
+    // eslint-disable-next-line no-console
+    console.error("Invalid environment configuration:\n  HIGGSFIELD_API_KEY: set it to KEY_ID:KEY_SECRET when VIDEO_PROVIDER=higgsfield\nSee .env.example");
     process.exit(1);
   }
   return applyTier(parsed.data);

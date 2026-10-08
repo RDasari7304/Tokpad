@@ -8,6 +8,16 @@ export { POSTS_PER_DAY };
 const keyOrCustom = (keys: readonly string[]) =>
   z.union([z.enum(keys as [string, ...string[]]), z.literal("custom")]).nullable().optional();
 
+export const MAX_CAST = 5;
+export const CAST_ROLES = ["best_friend", "rival", "mentor", "crush", "sidekick", "nemesis", "family", "boss"] as const;
+
+/** A recurring character in the influencer's life (fictional; never a real person). */
+export const castMemberSchema = z.object({
+  name: z.string().trim().min(1).max(40),
+  role: z.string().trim().max(40).default("best_friend"),
+  description: z.string().trim().max(240).default(""),
+});
+
 export const personaSchema = z
   .object({
     // Current and legacy personality keys are both accepted, so older coins can still save their settings.
@@ -20,6 +30,13 @@ export const personaSchema = z
     themes: z.array(z.string().max(60)).max(10).default([]),
     avoid: z.string().max(600).optional().default(""),
     language: z.string().max(40).default("English"),
+    // The story engine: who it is in one line, what it wants, what's in its way, where it lives, who's around it.
+    tagline: z.string().max(160).optional().default(""),
+    goal: z.string().max(300).optional().default(""),
+    obstacle: z.string().max(300).optional().default(""),
+    world: z.string().max(300).optional().default(""),
+    cast: z.array(castMemberSchema).max(MAX_CAST).default([]),
+    catchphrase: z.string().max(120).optional().default(""),
   })
   .superRefine((p, ctx) => {
     if (p.personality === "custom" && !p.personalityCustom.trim())
@@ -46,6 +63,8 @@ export const contentSettingsSchema = z.object({
   commentRepliesPerDay: z.number().int().min(5).max(150).default(40),
   // Reels: "film" = live-action, cinematic footage; "match" = the character's own art style.
   reelLook: z.enum(["film", "match"]).default("film"),
+  // Story posts open with "<storyline> · Part N" so they read as a TikTok series.
+  seriesLabels: z.boolean().default(true),
 });
 
 const optionalUrl = z

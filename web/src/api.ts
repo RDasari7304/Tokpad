@@ -35,6 +35,19 @@ export interface Persona {
   themes: string[];
   avoid: string;
   language: string;
+  /** The story engine: what makes posts a series people follow. */
+  tagline: string;
+  goal: string;
+  obstacle: string;
+  world: string;
+  cast: CastMember[];
+  catchphrase: string;
+}
+
+export interface CastMember {
+  name: string;
+  role: string;
+  description: string;
 }
 
 export interface ContentSettings {

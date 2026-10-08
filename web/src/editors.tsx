@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { humanize, type AppConfig, type ContentSettings, type Format, type Persona } from "./api";
-import { ChipChoice, Field } from "./components";
+import { api, humanize, type AppConfig, type CastMember, type ContentSettings, type Format, type Persona } from "./api";
+import { ChipChoice, Field, Notice } from "./components";
 
 export const defaultPersona = (): Persona => ({
   personality: null,
@@ -12,6 +12,12 @@ export const defaultPersona = (): Persona => ({
   themes: [],
   avoid: "",
   language: "English",
+  tagline: "",
+  goal: "",
+  obstacle: "",
+  world: "",
+  cast: [],
+  catchphrase: "",
 });
 
 export const defaultContent = (): ContentSettings => ({
@@ -88,10 +94,143 @@ function TagInput({
   );
 }
 
-export function PersonaEditor({ value, onChange, config }: { value: Persona; onChange: (p: Persona) => void; config: AppConfig }) {
-  const set = <K extends keyof Persona>(k: K, v: Persona[K]) => onChange({ ...value, [k]: v });
+const CAST_ROLES: Record<string, string> = {
+  best_friend: "Best friend",
+  rival: "Rival",
+  mentor: "Mentor",
+  crush: "Crush",
+  sidekick: "Sidekick",
+  nemesis: "Nemesis",
+  family: "Family",
+  boss: "Boss",
+};
+const MAX_CAST = 5;
+
+function CastEditor({ value, onChange }: { value: CastMember[]; onChange: (c: CastMember[]) => void }) {
+  const update = (i: number, patch: Partial<CastMember>) => onChange(value.map((c, j) => (j === i ? { ...c, ...patch } : c)));
   return (
-    <div className="editor">
+    <div className="cast">
+      {value.map((c, i) => (
+        <div className="cast-row" key={i}>
+          <input
+            className="input cast-name"
+            placeholder="Name"
+            maxLength={40}
+            value={c.name}
+            onChange={(e) => update(i, { name: e.target.value })}
+            aria-label={`Cast member ${i + 1} name`}
+          />
+          <select className="input cast-role" value={c.role} onChange={(e) => update(i, { role: e.target.value })} aria-label="Role">
+            {Object.entries(CAST_ROLES).map(([k, label]) => (
+              <option key={k} value={k}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <input
+            className="input cast-desc"
+            placeholder="Personality and look, e.g. a grumpy pigeon in a tiny trench coat"
+            maxLength={240}
+            value={c.description}
+            onChange={(e) => update(i, { description: e.target.value })}
+            aria-label={`Cast member ${i + 1} description`}
+          />
+          <button type="button" className="cast-remove" onClick={() => onChange(value.filter((_, j) => j !== i))} aria-label={`Remove ${c.name || "cast member"}`}>
+            ×
+          </button>
+        </div>
+      ))}
+      {value.length < MAX_CAST && (
+        <button
+          type="button"
+          className="btn btn-small btn-quiet"
+          onClick={() => onChange([...value, { name: "", role: value.length ? "rival" : "best_friend", description: "" }])}
+        >
+          + Add a character
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** The fields "Write my character" fills in. */
+const DRAFTED: Array<keyof Persona> = ["tagline", "goal", "obstacle", "world", "cast", "voice", "catchphrase", "backstory", "themes"];
+
+export function PersonaEditor({
+  value,
+  onChange,
+  config,
+  draftFrom,
+}: {
+  value: Persona;
+  onChange: (p: Persona) => void;
+  config: AppConfig;
+  /** The coin's details, for "Write my character". Omit to hide the button. */
+  draftFrom?: { name: string; symbol: string; description: string };
+}) {
+  const set = <K extends keyof Persona>(k: K, v: Persona[K]) => onChange({ ...value, [k]: v });
+  const [idea, setIdea] = useState("");
+  const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+
+  async function writeForMe() {
+    setDraftError(null);
+    if (!draftFrom?.name.trim()) return setDraftError("Give your coin a name first (in Identity), then try again.");
+    const hasWork = DRAFTED.some((k) => (Array.isArray(value[k]) ? (value[k] as unknown[]).length : String(value[k] ?? "").trim()));
+    if (hasWork && !confirm("Replace what you've written in the character with a new draft?")) return;
+    setDrafting(true);
+    try {
+      const r = await api<{ persona: Partial<Persona> }>("/coins/persona-draft", {
+        method: "POST",
+        json: {
+          name: draftFrom.name,
+          symbol: draftFrom.symbol,
+          description: draftFrom.description || undefined,
+          idea: idea.trim() || undefined,
+          personality: value.personality,
+          personalityCustom: value.personalityCustom || undefined,
+        },
+      });
+      onChange({ ...value, ...r.persona });
+    } catch (e) {
+      const msg = (e as Error).message;
+      setDraftError(/401|sign in|unauthor/i.test(msg) ? "Connect your wallet and sign in first (step 1), then try again." : msg);
+    } finally {
+      setDrafting(false);
+    }
+  }
+
+  return (
+    <div className="editor character">
+      {draftFrom && (
+        <div className="char-draft">
+          <h3 className="sub">Start from an idea</h3>
+          <p className="sub-hint">
+            Describe it in a few words and Tokpad writes the whole character: its goal, what's in its way, its world and its cast.
+            You can edit everything after.
+          </p>
+          <div className="char-draft-row">
+            <input
+              className="input"
+              maxLength={500}
+              value={idea}
+              placeholder="A raccoon who wants to become the best street chef on TikTok"
+              onChange={(e) => setIdea(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void writeForMe();
+                }
+              }}
+            />
+            <button type="button" className="btn btn-primary" onClick={writeForMe} disabled={drafting}>
+              {drafting ? "Writing…" : "Write my character"}
+            </button>
+          </div>
+          {draftError && <Notice tone="error">{draftError}</Notice>}
+        </div>
+      )}
+
       <h3 className="sub">Personality</h3>
       <p className="sub-hint">Who your coin's character is on TikTok.</p>
       <ChipChoice
@@ -103,6 +242,66 @@ export function PersonaEditor({ value, onChange, config }: { value: Persona; onC
         onCustom={(v) => set("personalityCustom", v)}
         customPlaceholder="A retired space pirate who speaks only in sea shanties"
       />
+
+      <h3 className="sub">Story</h3>
+      <p className="sub-hint">
+        This is what turns posts into a series people follow. Every storyline is a step toward the goal, and story posts go out
+        as numbered parts on TikTok.
+      </p>
+      <Field label="Who it is, in one line">
+        <input
+          className="input"
+          maxLength={160}
+          value={value.tagline}
+          placeholder="A clumsy raccoon chef with big dreams and a stolen spatula"
+          onChange={(e) => set("tagline", e.target.value)}
+        />
+      </Field>
+      <div className="grid-2">
+        <Field
+          label="Goal"
+          hint={
+            value.goal.trim()
+              ? "What it wants most. Every storyline moves it closer, or sets it back."
+              : "Strongly recommended: without a goal, posts feel random. Make it big, specific and visual."
+          }
+        >
+          <textarea
+            className="input"
+            rows={3}
+            maxLength={300}
+            value={value.goal}
+            placeholder="Open its own food truck and win the city's Night Market cook-off"
+            onChange={(e) => set("goal", e.target.value)}
+          />
+        </Field>
+        <Field label="What's in the way" hint="A flaw, fear, rival or circumstance. This is where the drama comes from.">
+          <textarea
+            className="input"
+            rows={3}
+            maxLength={300}
+            value={value.obstacle}
+            placeholder="It burns everything when people watch, and the health inspector is onto it"
+            onChange={(e) => set("obstacle", e.target.value)}
+          />
+        </Field>
+      </div>
+      <Field label="Its world" hint="Where it lives and hangs out, so posts happen in places that feel like one world.">
+        <input
+          className="input"
+          maxLength={300}
+          value={value.world}
+          placeholder="A rainy neon city of alleys, rooftop gardens and late-night food stalls"
+          onChange={(e) => set("world", e.target.value)}
+        />
+      </Field>
+
+      <h3 className="sub">Cast</h3>
+      <p className="sub-hint">
+        Recurring characters in its life (up to {MAX_CAST}). They show up across posts, so relationships build over time. Describe
+        how they look so they stay recognisable.
+      </p>
+      <CastEditor value={value.cast ?? []} onChange={(c) => set("cast", c)} />
 
       <h3 className="sub">Look</h3>
       <p className="sub-hint">Every post uses your token image as the character reference, drawn in this style.</p>
@@ -117,23 +316,39 @@ export function PersonaEditor({ value, onChange, config }: { value: Persona; onC
         customPlaceholder="Ukiyo-e woodblock print, muted indigo and rust"
       />
 
+      <h3 className="sub">Voice</h3>
       <div className="grid-2">
-        <Field label="Backstory" hint="Optional. Where it came from, what it loves, its running jokes.">
-          <textarea className="input" rows={4} maxLength={1500} value={value.backstory} onChange={(e) => set("backstory", e.target.value)} />
+        <Field label="How it talks" hint="In captions and out loud in videos: tone, accent, pace, slang.">
+          <textarea className="input" rows={3} maxLength={400} value={value.voice} onChange={(e) => set("voice", e.target.value)} />
         </Field>
-        <Field label="Voice" hint="Optional. How it talks, in captions and out loud in videos: tone, accent, pace, slang.">
-          <textarea className="input" rows={4} maxLength={400} value={value.voice} onChange={(e) => set("voice", e.target.value)} />
-        </Field>
-        <Field label="Recurring themes" hint="Up to 10, each up to 60 characters. Press Enter after each, or paste a list.">
-          <TagInput value={value.themes} onChange={(v) => set("themes", v)} max={10} placeholder="space, naps, jazz" />
-        </Field>
-        <Field label="Never post about" hint="Optional. Topics the character must avoid.">
-          <input className="input" maxLength={600} value={value.avoid} onChange={(e) => set("avoid", e.target.value)} />
-        </Field>
-        <Field label="Caption language">
-          <input className="input" maxLength={40} value={value.language} onChange={(e) => set("language", e.target.value)} />
+        <Field label="Catchphrase or running bit" hint="Optional. Used now and then, not in every post.">
+          <input
+            className="input"
+            maxLength={120}
+            value={value.catchphrase}
+            placeholder="“Seasoned with chaos.”"
+            onChange={(e) => set("catchphrase", e.target.value)}
+          />
         </Field>
       </div>
+
+      <details className="more">
+        <summary>More: backstory, themes, limits, language</summary>
+        <div className="grid-2">
+          <Field label="Backstory" hint="Optional. Where it came from.">
+            <textarea className="input" rows={4} maxLength={1500} value={value.backstory} onChange={(e) => set("backstory", e.target.value)} />
+          </Field>
+          <Field label="Recurring themes" hint="Up to 10, each up to 60 characters. Press Enter after each, or paste a list.">
+            <TagInput value={value.themes} onChange={(v) => set("themes", v)} max={10} placeholder="street food, rain, rivalry" />
+          </Field>
+          <Field label="Never post about" hint="Optional. Topics the character must avoid.">
+            <input className="input" maxLength={600} value={value.avoid} onChange={(e) => set("avoid", e.target.value)} />
+          </Field>
+          <Field label="Caption language">
+            <input className="input" maxLength={40} value={value.language} onChange={(e) => set("language", e.target.value)} />
+          </Field>
+        </div>
+      </details>
     </div>
   );
 }

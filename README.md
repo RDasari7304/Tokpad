@@ -166,6 +166,26 @@ restart `npm run dev`, and open the site through the tunnel address.
 - **Comment replies (optional):** TikTok's comment scopes (`comment.list`, `comment.list.manage`) need separate
   approval. Once granted, set `TIKTOK_COMMENTS=true`; creators reconnect once.
 
+## Characters that hold together
+
+The launch form's **Character** step is a small story bible: a one-line pitch, a **goal**, **what's in the way**, the
+character's **world**, a recurring **cast** (up to 5), voice and catchphrase. "Write my character" drafts all of it
+from a one-line idea (one Claude call, counted in the AI budget).
+
+- Every storyline is planned as the next chapter toward the goal and records how it moved the character closer
+  (`story_arcs.goal_step`); later storylines see that history.
+- Story posts go out as a numbered TikTok series ("<storyline> · Part 3"), opening with a hook that picks up from the
+  previous part. Turn it off per coin with `contentSettings.seriesLabels=false`.
+- The cast and goal are in every planning prompt, so the same people and the same ambition keep coming back.
+
+## Video engines
+
+Videos render on fal.ai by default (`FAL_REEL_MODEL`). Set `VIDEO_PROVIDER=higgsfield` to use Higgsfield's API instead
+(see `.env.example`). Tokpad sends the keyframe as `image_url` plus the prompt to `HIGGSFIELD_VIDEO_ENDPOINT` and polls
+the request until it completes. Higgsfield's preset "templates" and effects are mostly features of its consumer app;
+if your model's API page lists a preset or motion field, add it to `HIGGSFIELD_VIDEO_PARAMS`. Set `COST_REEL_USD` to
+the per-clip price of the model you pick, so the daily budget stays accurate.
+
 ## Deploy (Render)
 
 **Full step-by-step guide: [DEPLOY.md](DEPLOY.md).** Short version:

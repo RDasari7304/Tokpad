@@ -21,6 +21,8 @@ import { lockedUsername } from "./tiktok.js";
 import { getCoin, getCoinByIdOrMint, publicCoin, type CoinRow } from "../services/coins.js";
 import { upsertAccessRequest } from "../services/tiktokAccess.js";
 import { createDraft, prepareLaunch, submitLaunch } from "../services/launch.js";
+import { draftPersona } from "../services/personaDraft.js";
+import { BudgetError } from "../services/spend.js";
 import { buildBuyTx } from "../services/pumpportal.js";
 import { getKillSwitch } from "../services/settings.js";
 import { getSolBalance } from "../services/solana.js";
@@ -63,6 +65,33 @@ async function accessRequest(coinId: string) {
     [coinId],
   );
 }
+
+const personaDraftLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 15, standardHeaders: true, legacyHeaders: false });
+
+/** "Write my character": Claude drafts a full character from the coin's details and the creator's idea. */
+coinsRouter.post(
+  "/persona-draft",
+  requireAuth,
+  personaDraftLimiter,
+  asyncHandler(async (req, res) => {
+    const input = z
+      .object({
+        name: z.string().trim().min(1, "Give your coin a name first").max(32),
+        symbol: z.string().trim().max(10).default(""),
+        description: z.string().max(500).optional(),
+        idea: z.string().max(500).optional(),
+        personality: z.string().max(40).nullable().optional(),
+        personalityCustom: z.string().max(400).optional(),
+      })
+      .parse(req.body);
+    try {
+      res.json({ persona: await draftPersona(input) });
+    } catch (e) {
+      if (e instanceof BudgetError) throw new HttpError(503, "The AI budget for today is used up. Try again tomorrow, or write it yourself.");
+      throw e;
+    }
+  }),
+);
 
 // ---- public reads ----
 

@@ -3477,3 +3477,58 @@ textarea.input {
 .tt-connected .btn {
   margin-left: auto;
 }
+
+/* Character editor: "Write my character" and the cast list. */
+.char-draft {
+  background: var(--print);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 8px;
+  box-shadow: -3px -3px 0 var(--cyan-wash), 3px 3px 0 var(--accent-wash);
+}
+.char-draft .sub {
+  margin-top: 0;
+}
+.char-draft-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.char-draft-row .input {
+  flex: 1 1 260px;
+}
+.cast {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.cast-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) minmax(110px, 0.9fr) minmax(180px, 3fr) auto;
+  gap: 8px;
+  width: 100%;
+  align-items: center;
+}
+.cast-remove {
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 1.3rem;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.cast-remove:hover {
+  color: var(--error);
+}
+@media (max-width: 640px) {
+  .cast-row {
+    grid-template-columns: 1fr 1fr auto;
+  }
+  .cast-desc {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
